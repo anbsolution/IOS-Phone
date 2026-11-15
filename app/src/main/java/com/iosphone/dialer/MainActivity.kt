@@ -43,18 +43,28 @@ class MainActivity : ComponentActivity() {
             android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
             android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
 
+        showPhoneUi(intent?.data?.schemeSpecificPart.orEmpty())
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        showPhoneUi(intent.data?.schemeSpecificPart.orEmpty())
+    }
+
+    private fun showPhoneUi(dialNumber: String) {
         setContent {
             MaterialTheme {
-                PhoneApp()
+                PhoneApp(initialDialNumber = dialNumber)
             }
         }
     }
 }
 
 @Composable
-fun PhoneApp() {
+fun PhoneApp(initialDialNumber: String = "") {
     var tab by remember { mutableStateOf("Keypad") }
-    var number by remember { mutableStateOf("") }
+    var number by remember { mutableStateOf(initialDialNumber) }
 
     val context = LocalContext.current
     var pendingCallNumber by remember { mutableStateOf("") }
@@ -240,23 +250,11 @@ fun PhoneApp() {
                     )
                 }
 
-                "Contacts" -> EmptyScreen(
-                    Icons.Default.Person,
-                    "Contacts",
-                    "Your contacts will appear here"
-                )
+                "Contacts" -> ContactsScreen(onCall = { number = it; requestCall(it) })
 
-                "Recents" -> EmptyScreen(
-                    Icons.Default.History,
-                    "No Recent Calls",
-                    "Your call history will appear here"
-                )
+                "Recents" -> RecentsScreen(onCall = { number = it; requestCall(it) })
 
-                "Favorites" -> EmptyScreen(
-                    Icons.Default.StarBorder,
-                    "Favorites",
-                    "Your favorite contacts will appear here"
-                )
+                "Favorites" -> FavoritesScreen(onCall = { number = it; requestCall(it) })
 
                 else -> EmptyScreen(
                     Icons.Default.Voicemail,
