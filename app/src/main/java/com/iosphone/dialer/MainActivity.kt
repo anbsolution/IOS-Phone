@@ -1,6 +1,17 @@
 package com.iosphone.dialer
 
 import android.os.Bundle
+import android.Manifest
+import android.app.role.RoleManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.telecom.TelecomManager
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -44,6 +55,110 @@ class MainActivity : ComponentActivity() {
 fun PhoneApp() {
     var tab by remember { mutableStateOf("Keypad") }
     var number by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+    var pendingCallNumber by remember { mutableStateOf("") }
+
+    val callPermissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            if (granted && pendingCallNumber.isNotBlank()) {
+                val telecom = context.getSystemService(
+                    Context.TELECOM_SERVICE
+                ) as TelecomManager
+
+                try {
+                    telecom.placeCall(
+                        Uri.fromParts("tel", pendingCallNumber, null),
+                        Bundle()
+                    )
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        context,
+                        "Unable to place call: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } else if (!granted) {
+                Toast.makeText(
+                    context,
+                    "Call permission denied",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            pendingCallNumber = ""
+        }
+
+    val defaultRoleLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) {
+            val manager = context.getSystemService(
+                RoleManager::class.java
+            )
+            Toast.makeText(
+                context,
+                if (manager.isRoleHeld(RoleManager.ROLE_DIALER))
+                    "Default Phone enabled"
+                else "Default Phone not selected",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+    fun requestDefaultPhone() {
+        val manager = context.getSystemService(
+            RoleManager::class.java
+        )
+        if (manager.isRoleAvailable(RoleManager.ROLE_DIALER) &&
+            !manager.isRoleHeld(RoleManager.ROLE_DIALER)
+        ) {
+            defaultRoleLauncher.launch(
+                manager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
+            )
+        } else {
+            Toast.makeText(
+                context,
+                "Already set as Default Phone",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    fun requestCall(phoneNumber: String) {
+        if (phoneNumber.isBlank()) {
+            Toast.makeText(context, "Enter a phone number", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        pendingCallNumber = phoneNumber
+
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CALL_PHONE
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val telecom = context.getSystemService(
+                Context.TELECOM_SERVICE
+            ) as TelecomManager
+
+            try {
+                telecom.placeCall(
+                    Uri.fromParts("tel", phoneNumber, null),
+                    Bundle()
+                )
+            } catch (e: Exception) {
+                Toast.makeText(
+                    context,
+                    "Unable to place call: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            pendingCallNumber = ""
+        } else {
+            callPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
+        }
+    }
 
     val tabs = listOf(
         "Favorites", "Recents", "Contacts", "Keypad", "Voicemail"
@@ -95,8 +210,8 @@ fun PhoneApp() {
 
                 Spacer(Modifier.weight(1f))
 
-                IconButton(onClick = {}) {
-                    Icon(Icons.Default.MoreVert, null)
+                TextButton(onClick = { requestDefaultPhone() }) {
+                    Text("Default", color = Blue)
                 }
             }
 
@@ -120,7 +235,8 @@ fun PhoneApp() {
                             if (number.isNotEmpty()) {
                                 number = number.dropLast(1)
                             }
-                        }
+                        },
+                        onCall = { requestCall(number) }
                     )
                 }
 
@@ -190,7 +306,8 @@ fun PhoneApp() {
 fun KeypadScreen(
     number: String,
     onNumber: (String) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onCall: () -> Unit
 ) {
     Column {
         Row(
@@ -274,9 +391,7 @@ fun KeypadScreen(
                 modifier = Modifier
                     .size(68.dp)
                     .background(Blue, CircleShape)
-                    .clickable {
-                        // Real calling will be integrated in Phase 2.
-                    },
+                    .clickable { onCall() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
